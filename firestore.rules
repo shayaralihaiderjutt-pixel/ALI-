@@ -1,0 +1,129 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {uid}
+// Fields:
+//   - uid: string (required, immutable) - Firebase Auth UID
+//   - email: string (required, immutable) - User email
+//   - displayName: string (required) - User display name
+//   - balance: number (required) - Current balance in PKR
+//   - createdAt: string (required, immutable) - ISO date string
+//
+// Collection: users_public
+// Document ID: {uid}
+// Fields:
+//   - uid: string (required, immutable) - Firebase Auth UID
+//   - displayName: string (required) - User display name
+//   - photoURL: string (optional) - User photo URL
+//   - referredBy: string (optional) - UID of the referrer
+//
+// Collection: transactions
+// Document ID: {transactionId}
+// Fields:
+//   - userId: string (required, immutable) - UID of the user
+//   - amount: number (required, immutable) - Amount in PKR
+//   - type: string (required, immutable) - 'earn' or 'withdraw'
+//   - status: string (required) - 'pending' or 'completed'
+//   - method: string (optional, immutable) - Easypaisa or JazzCash
+//   - accountNumber: string (optional, immutable) - Account number
+//   - createdAt: string (required, immutable) - ISO date string
+//
+// Collection: notifications
+// Document ID: {notificationId}
+// Fields:
+//   - userId: string (required, immutable) - UID of the user
+//   - title: string (required) - Notification title
+//   - message: string (required) - Notification message
+//   - read: boolean (required) - Read status
+//   - createdAt: string (required, immutable) - ISO date string
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "shayaralihaiderjutt@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'balance', 'createdAt']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.email is string && data.email.size() > 0 &&
+             data.displayName is string && data.displayName.size() > 0 &&
+             (!('displayNameLower' in data) || (data.displayNameLower is string)) &&
+             (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() < 20)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 2000)) &&
+             data.balance is number &&
+             data.createdAt is string;
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['userId', 'amount', 'type', 'status', 'createdAt']) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.amount is number && data.amount > 0 &&
+             data.type in ['earn', 'withdraw', 'deposit'] &&
+             data.status in ['pending', 'completed', 'rejected'] &&
+             data.createdAt is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{uid} {
+      allow list: if true; // Allow queries for login/signup (phone/name checks)
+      allow get: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid) && isValidUser(request.resource.data);
+      allow update: if (isOwner(uid) && isValidUser(request.resource.data) &&
+                      request.resource.data.uid == resource.data.uid &&
+                      request.resource.data.email == resource.data.email &&
+                      request.resource.data.createdAt == resource.data.createdAt) || isAdmin();
+    }
+
+    match /users_public/{uid} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid);
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isAuthenticated() && isValidTransaction(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // Allow connection test
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

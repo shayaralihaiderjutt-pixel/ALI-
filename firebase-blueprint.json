@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account details and balance.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "balance": { "type": "number", "description": "Current balance in PKR" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "balance", "createdAt"]
+    },
+    "Transaction": {
+      "title": "Transaction Record",
+      "description": "Record of earnings or withdrawals.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the user" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["earn", "withdraw"] },
+        "status": { "type": "string", "enum": ["pending", "completed"] },
+        "method": { "type": "string", "description": "Easypaisa or JazzCash" },
+        "accountNumber": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "amount", "type", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles indexed by UID."
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Global transaction log."
+    }
+  }
+}
